@@ -2,149 +2,283 @@
 
 Projet réalisé dans le cadre du **Master 2 Ingénierie Mathématique et Data Science** à l’Université de Haute-Alsace.
 
-L’objectif du projet est d’étudier l’accélération d’un algorithme d’optimisation métaheuristique, **Differential Evolution (DE)**, grâce au calcul parallèle sur GPU avec **NVIDIA CUDA**.
+Ce projet étudie la parallélisation de l’algorithme d’optimisation **Differential Evolution (DE)** avec **NVIDIA CUDA**, ainsi que la comparaison de ses performances avec une implémentation séquentielle CPU.
 
-Nous avons développé une version séquentielle CPU et une version parallèle GPU, puis comparé leurs performances sur plusieurs fonctions d’optimisation.
+L’objectif principal est d’analyser l’impact du calcul parallèle sur :
 
-## Objectifs du projet
+- le temps d’exécution ;
+- le speedup CPU/GPU ;
+- la qualité de convergence ;
+- l’influence de la dimension et de la taille de population.
 
-- Implémenter l’algorithme Differential Evolution en C++
-- Paralléliser les principales étapes de l’algorithme avec CUDA
-- Comparer les performances CPU et GPU
-- Étudier l’influence de la dimension et de la taille de population
-- Vérifier statistiquement la qualité des solutions obtenues
-- Analyser le compromis entre temps de calcul et convergence
+---
 
-## Algorithme étudié
+## Points clés
+
+- Implémentation de Differential Evolution en **C++**
+- Version parallèle avec **CUDA**
+- Utilisation de **cuRAND** pour la génération aléatoire sur GPU
+- Comparaison expérimentale **CPU / GPU**
+- Analyse de quatre fonctions de benchmark
+- Étude de plusieurs dimensions et tailles de population
+- Validation statistique avec **Wilcoxon** et **Kruskal-Wallis**
+- Analyse du compromis entre accélération GPU et convergence
+
+---
+
+## Algorithme
 
 L’implémentation utilise la stratégie :
 
-`DE/rand/1/bin`
+```text
+DE/rand/1/bin
+```
 
-Chaque génération repose sur quatre étapes principales :
+Pour chaque individu, Differential Evolution réalise :
 
-1. Mutation
-2. Crossover binomial
-3. Évaluation de la fonction objectif
-4. Sélection
+1. **Mutation**
+2. **Crossover**
+3. **Évaluation**
+4. **Sélection**
 
-Dans la version GPU, les individus de la population sont traités en parallèle à l’aide de threads CUDA.
+La mutation suit la forme :
 
-## Fonctions de benchmark
+```text
+V = Xr1 + F × (Xr2 - Xr3)
+```
+
+Lors du crossover, les composantes du vecteur d’essai proviennent soit du parent, soit du vecteur mutant selon la probabilité `CR`.
+
+Un indice `j_rand` garantit qu’au moins une composante provient du mutant.
+
+---
+
+## Parallélisation CUDA
+
+La version GPU parallélise le traitement des individus de la population.
+
+Dans le kernel de crossover, chaque thread CUDA est responsable d’un individu.
+
+Le thread :
+
+- parcourt les dimensions de l’individu ;
+- génère les nombres aléatoires avec `cuRAND` ;
+- applique la probabilité de crossover ;
+- force une composante mutante avec `j_rand` ;
+- applique le clamping ;
+- construit le vecteur d’essai.
+
+Cette organisation permet d’augmenter fortement les performances lorsque la charge de calcul devient importante.
+
+---
+
+## Protocole expérimental
 
 Les expérimentations ont été réalisées sur quatre fonctions classiques d’optimisation :
 
-- Sphere
-- Rosenbrock
-- Griewank
-- Rastrigin
+| Fonction | Caractéristique principale |
+|---|---|
+| Sphere | fonction simple et convexe |
+| Rosenbrock | vallée étroite et incurvée |
+| Griewank | nombreux minima locaux |
+| Rastrigin | fonction multimodale |
 
-Les configurations testées utilisent :
+Configurations testées :
 
 - Dimensions : `10`, `50`, `100`
 - Populations : `50`, `100`, `500`
-- Budget d’évaluation : `MaxFES = 10 000 × Dimension`
-- 10 exécutions indépendantes pour chaque configuration
+- Budget : `MaxFES = 10 000 × Dimension`
+- 10 exécutions indépendantes par configuration
 
-Au total, plusieurs centaines d’exécutions CPU/GPU ont été réalisées afin d’obtenir des résultats statistiquement exploitables.
-
-## Technologies et compétences mobilisées
-
-- C++
-- NVIDIA CUDA
-- cuRAND
-- Calcul parallèle sur GPU
-- Optimisation numérique
-- Algorithmes évolutionnaires
-- Analyse expérimentale
-- Analyse statistique
-- Wilcoxon signed-rank test
-- Visualisation et interprétation des performances
+---
 
 ## Résultats principaux
 
-Les expérimentations montrent que l’accélération GPU devient particulièrement intéressante lorsque la taille de population augmente.
+Le speedup est défini par :
 
-Le meilleur speedup observé sur les configurations testées est d’environ :
+```text
+Speedup = Temps CPU / Temps GPU
+```
 
-**16,9×**
+Les expérimentations montrent que l’accélération GPU augmente fortement avec la taille de population.
 
-Sur la fonction Rosenbrock, par exemple, avec :
+### Meilleur speedup observé
 
-`Dimension = 10`  
-`Population = 500`
+**≈ 16,9×**
+
+### Exemple — Rosenbrock
+
+Pour :
+
+```text
+Dimension = 10
+Population = 500
+```
 
 le speedup obtenu est d’environ :
 
-**15×**
+**≈ 15×**
 
-Les résultats montrent également que l’augmentation de la population améliore le potentiel de parallélisation, mais peut réduire le nombre de générations disponibles lorsque le budget `MaxFES` reste fixe.
+---
 
-## Comparaison de la qualité CPU / GPU
+## Visualisation des performances
 
-La comparaison statistique des résultats CPU et GPU a été réalisée à l’aide du test de Wilcoxon.
+### Rosenbrock — Dimension 10
 
-Sur la fonction Rosenbrock, une seule configuration sur neuf présente une différence statistiquement significative au seuil de 5 %.
+![Speedup Rosenbrock D10](figures/Rosenbrock_speedup_D10.png)
 
-Cela indique que les deux implémentations présentent globalement une qualité d’optimisation comparable, malgré des trajectoires aléatoires différentes.
+### Rosenbrock — Dimension 50
+
+![Speedup Rosenbrock D50](figures/Rosenbrock_speedup_D50.png)
+
+### Rosenbrock — Dimension 100
+
+![Speedup Rosenbrock D100](figures/Rosenbrock_speedup_D100.png)
+
+---
+
+## Analyse de la convergence
+
+La fonction Rosenbrock est particulièrement intéressante car elle présente une **vallée étroite et incurvée**.
+
+L’algorithme doit donc :
+
+- localiser cette vallée ;
+- progresser le long de celle-ci ;
+- atteindre précisément l’optimum global.
+
+Dans notre formulation :
+
+```text
+x* = (0, ..., 0)
+f(x*) = 0
+```
+
+Le graphique suivant illustre l’erreur obtenue pour une dimension élevée :
+
+![Erreur Rosenbrock D100](figures/Rosenbrock_erreur_log_D100.png)
+
+---
+
+## Impact de la taille de population
+
+Une population importante offre davantage de parallélisme au GPU.
+
+Cependant, avec un budget fixe :
+
+```text
+MaxFES = 10 000 × Dimension
+```
+
+une population plus grande signifie également moins de générations.
+
+Pour `D = 10` :
+
+| Population | Générations approximatives |
+|---:|---:|
+| 50 | 1999 |
+| 100 | 999 |
+| 500 | 199 |
+
+Cela montre un compromis important entre :
+
+**parallélisme, exploration et convergence.**
+
+---
+
+## Analyse statistique
+
+Les performances CPU et GPU ont été comparées avec le **test de Wilcoxon signed-rank**.
+
+Le seuil utilisé est :
+
+```text
+α = 0,05
+```
+
+- `p < 0,05` : différence statistiquement significative
+- `p ≥ 0,05` : aucune différence significative détectée
+
+Pour Rosenbrock, une seule configuration sur neuf présente une différence statistiquement significative.
+
+Globalement, les versions CPU et GPU présentent donc une **qualité d’optimisation comparable**.
+
+Le test de **Kruskal-Wallis** a également été utilisé afin d’étudier l’influence de la taille de population.
+
+---
+
+## Technologies
+
+`C++` · `CUDA` · `cuRAND` · `GPU Computing` · `Differential Evolution` · `Numerical Optimization` · `Statistical Analysis` · `Jupyter Notebook`
+
+---
 
 ## Ma contribution
 
-Dans ce projet réalisé en équipe, mes principales contributions ont été :
+Projet réalisé en équipe.
 
-- développement de la version séquentielle CPU de Differential Evolution ;
-- implémentation du crossover parallèle avec CUDA ;
-- gestion de la probabilité de crossover `CR` ;
-- utilisation de `j_rand` afin de garantir au moins une composante issue du mutant ;
+Mes principales contributions ont été :
+
+- implémentation de la version séquentielle CPU de Differential Evolution ;
+- développement du kernel CUDA de crossover ;
+- gestion de `CR` et de `j_rand` ;
 - gestion des contraintes avec clamping ;
-- étude et analyse de la fonction Rosenbrock ;
-- comparaison des temps d’exécution CPU / GPU ;
+- étude de la fonction Rosenbrock ;
+- comparaison CPU/GPU ;
 - analyse du speedup ;
-- interprétation du test statistique de Wilcoxon ;
-- contribution à l’architecture CPU/GPU et à la documentation du projet.
+- interprétation du test de Wilcoxon ;
+- contribution à l’architecture CPU/GPU ;
+- contribution à la documentation et à la présentation du projet.
 
-## Architecture du projet
+---
+
+## Structure du dépôt
 
 ```text
-Rendu_Final/
+parallel-differential-evolution-cuda/
 │
 ├── de/
 │   ├── main.cpp
 │   ├── kernel.cpp
 │   ├── kernel.cu
 │   ├── kernel.h
-│   ├── CudaDE.ipynb
-│   ├── résultats CSV
-│   └── visualisations
+│   └── CudaDE.ipynb
 │
-├── pso/
-│   ├── implémentation CPU/GPU
-│   ├── notebook d’analyse
-│   └── résultats expérimentaux
+├── results/
+│   └── de/
+│       ├── campagne_F1_final.csv
+│       ├── campagne_F2_final.csv
+│       ├── campagne_F3_final.csv
+│       ├── campagne_F4_final.csv
+│       ├── sphere_summary.csv
+│       ├── rosenbrock_summary.csv
+│       ├── griewank_summary.csv
+│       ├── rastrigin_summary.csv
+│       ├── speedup_final.csv
+│       └── wilcoxon_*.csv
 │
-├── rapport_final.pdf
+├── figures/
+│   ├── Rosenbrock_speedup_D10.png
+│   ├── Rosenbrock_speedup_D50.png
+│   ├── Rosenbrock_speedup_D100.png
+│   └── Rosenbrock_erreur_log_D100.png
 │
-└── Soutenance_DE_CUDA_final.pdf
+└── README.md
 ```
 
-## Exemple d’architecture CUDA
+---
 
-Dans le crossover GPU, chaque thread CUDA traite un individu de la population.
+## Compétences développées
 
-Le thread parcourt ensuite les dimensions de cet individu afin de construire le vecteur d’essai selon la probabilité de crossover.
+Ce projet m’a permis d’approfondir des compétences à l’intersection de la **Data Science, de l’optimisation et du calcul haute performance** :
 
-Cette approche permet de paralléliser les opérations coûteuses lorsque la population devient importante.
+- programmation parallèle ;
+- optimisation numérique ;
+- expérimentation reproductible ;
+- analyse statistique ;
+- benchmarking ;
+- visualisation de résultats ;
+- analyse des performances ;
+- comparaison d’algorithmes.
 
-## Ce que ce projet m’a apporté
-
-Ce projet m’a permis de développer des compétences à l’intersection de la **Data Science, de l’optimisation numérique et du calcul haute performance**.
-
-J’ai notamment approfondi :
-
-- la conception d’expériences reproductibles ;
-- la comparaison statistique d’algorithmes ;
-- l’optimisation de performances ;
-- la programmation parallèle ;
-- l’analyse de compromis entre précision, convergence et temps de calcul.
-
-Ces compétences sont directement transférables à des problématiques de Data Science nécessitant des traitements intensifs, de l’optimisation ou de grandes campagnes expérimentales.
+Ces compétences sont directement applicables à des problématiques de **Data Science, Machine Learning, optimisation et calcul intensif**.
